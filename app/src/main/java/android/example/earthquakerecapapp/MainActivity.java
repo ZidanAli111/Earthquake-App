@@ -1,6 +1,12 @@
 package android.example.earthquakerecapapp;
 
+import android.app.LoaderManager;
+import android.content.Context;
 import android.content.Intent;
+import android.content.Loader;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -8,17 +14,22 @@ import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
+import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements LoaderManager.LoaderCallbacks<List<Earthquake>> {
 
     private static final String JSON_RESPONSE = "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&minmag=1&limit=50";
 
     private EarthquakeAdapter adapter;
+
+    private static final int LOADER_ID = 1;
+
+    private TextView mEmptyStateView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,8 +38,12 @@ public class MainActivity extends AppCompatActivity {
 
         ListView earthquakeListView = findViewById(R.id.list);
 
-        adapter = new EarthquakeAdapter(this, new ArrayList<Earthquake>());
+        mEmptyStateView = findViewById(R.id.empty_view);
 
+        earthquakeListView.setEmptyView(mEmptyStateView);
+
+
+        adapter = new EarthquakeAdapter(this, new ArrayList<Earthquake>());
 
         earthquakeListView.setAdapter(adapter);
 
@@ -46,43 +61,50 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        EarthquakeTask earthquakeTask = new EarthquakeTask();
 
-        earthquakeTask.execute(JSON_RESPONSE);
+        ConnectivityManager connectivityManager=(ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
+
+        NetworkInfo networkInfo=connectivityManager.getActiveNetworkInfo();
+
+        if (networkInfo!=null&&networkInfo.isConnected()) {
+
+            LoaderManager loaderManager = getLoaderManager();
+            loaderManager.initLoader(LOADER_ID, null, this);
+        }
+
+        else
+        {
+            View loadingIndicator=findViewById(R.id.loading_indicator);
+            loadingIndicator.setVisibility(View.GONE);
+            mEmptyStateView.setText("no internet connection");
+        }
 
 
     }
 
+    @Override
+    public Loader<List<Earthquake>> onCreateLoader(int id, Bundle args) {
+        return new EarthquakeLoader(this, JSON_RESPONSE);
+    }
 
-    private class EarthquakeTask extends AsyncTask<String, Void, List<Earthquake>> {
+    @Override
+    public void onLoadFinished(Loader<List<Earthquake>> loader, List<Earthquake> data) {
 
+        View loadingIndicator=findViewById(R.id.loading_indicator);
+        loadingIndicator.setVisibility(View.GONE);
 
-        @Override
-        protected List<Earthquake> doInBackground(String... urls) {
-
-            if (urls.length < 1 || urls[0] == null) {
-                return null;
-            }
-
-            Log.i("URLS", "GIVEN JSONUrl is:" + urls[0]);
-
-            List<Earthquake> result = EarthquakeUtils.fetchEarthquakeData(urls[0]);
-
-
-            return result;
-
-        }
-
-        @Override
-        protected void onPostExecute(List<Earthquake> data) {
-
-            adapter.clear();
-
-
-            if (data != null && !data.isEmpty()) {
-                adapter.addAll(data);
-            }
+        mEmptyStateView.setText("No earthquake found");
+        adapter.clear();
+        if (data != null && !data.isEmpty()) {
+            adapter.addAll(data);
         }
     }
+
+    @Override
+    public void onLoaderReset(Loader<List<Earthquake>> loader) {
+        adapter.clear();
+    }
+
+
 
 }
